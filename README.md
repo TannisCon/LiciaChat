@@ -32,7 +32,7 @@
 ### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
+git clone git clone https://github.com/TannisCon/LiciaChat.git
 cd LiciaChat
 ```
 
