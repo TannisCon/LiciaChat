@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 移除默认边距，确保全屏显示 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 自定义滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* 表格线样式 - 使用 Tailwind @layer components */
+@layer components {
+  .prose table {
+    @apply border-collapse border border-zinc-700;
+  }
+
+  .prose th,
+  .prose td {
+    @apply border border-zinc-800 px-2 py-1.5;
+  }
+
+  .prose th {
+    @apply font-semibold bg-zinc-900 text-sm;
+  }
+
+  .prose hr {
+    @apply my-4;
+  
+  }
+}

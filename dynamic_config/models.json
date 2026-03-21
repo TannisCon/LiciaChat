@@ -1,0 +1,29 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "qwen3.5-plus",
+      "object": "model",
+      "created": 1710000000,
+      "owned_by": "bailian"
+    },
+    {
+      "id": "qwen3-max",
+      "object": "model",
+      "created": 1710000000,
+      "owned_by": "bailian"
+    },
+    {
+      "id": "qwen3.5-plus-2026-02-15",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "bailian"
+    },
+    {
+      "id": "qwen3-max-2026-01-23",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "bailian"
+    }
+  ]
+}
