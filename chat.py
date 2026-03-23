@@ -14,7 +14,9 @@ from history import (
     append_history,
     update_chat_title,
     get_history_full,
-    get_combined_history
+    get_combined_history,
+    ChatNotFoundError,
+    ChatAccessDeniedError
 )
 from appinit import (
     MAIN_LLM_MODEL,
@@ -152,8 +154,8 @@ async def generate_chat_title(
         
         # 构建总结请求
         system_prompt = get_prompt("generate_title")
-        summary_prompt = f"""“用户提问”：{user_message}
-“AI 回答”：{response_content[:500]}"""
+        summary_prompt = f"""'用户提问'：{user_message}
+'AI 回答'：{response_content[:500]}"""
         
         # 创建客户端用于标题生成（使用传入的 api_key 和 base_url）
         title_client = get_openai_client(api_key=api_key, base_url=base_url)
@@ -187,12 +189,16 @@ async def generate_chat_title(
             if len(title) > 24:
                 title = title[:24]
             
-            # 更新对话标题
+            # 更新对话标题（不传入 user_uuid，因为这是后台自动操作）
+            # 如果对话不存在或无权访问，异常会被静默捕获
             update_chat_title(chat_id, title)
             print(f"对话标题已更新：{title}")
         
     except asyncio.TimeoutError:
         print(f"标题生成超时（{TITLE_GENERATION_TIMEOUT}秒），跳过标题生成")
+    except (ChatNotFoundError, ChatAccessDeniedError):
+        # 标题生成是后台异步操作，对话可能已被删除，静默处理异常
+        pass
     except Exception as e:
         print(f"标题生成失败：{e}")
 

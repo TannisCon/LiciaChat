@@ -51,7 +51,11 @@ from history import (
     # chat_exists,
     get_chat_by_id_and_uuid,
     delete_chat,
-    update_chat_title
+    update_chat_title,
+    update_chat_current_model,
+    ChatNotFoundError,
+    ChatAccessDeniedError,
+    DatabaseError
 )
 
 # 应用生命周期管理
@@ -217,6 +221,17 @@ class UpdateTitleRequest(BaseModel):
 class UpdateTitleResponse(BaseModel):
     chat_id: str
     title: str
+
+
+class UpdateChatInfoRequest(BaseModel):
+    title: Optional[str] = None
+    current_model: Optional[str] = None
+
+
+class UpdateChatInfoResponse(BaseModel):
+    chat_id: str
+    title: Optional[str] = None
+    current_model: Optional[str] = None
 
 
 class UpdateUsernameRequest(BaseModel):
@@ -757,45 +772,74 @@ def delete_chat_endpoint(chat_id: str, current_user: User = Depends(get_current_
     }
 
 
-@app.patch("/api/chat/{chat_id}", response_model=UpdateTitleResponse)
-def update_chat_title_endpoint(
+@app.patch("/api/chat/{chat_id}", response_model=UpdateChatInfoResponse)
+def update_chat_info_endpoint(
     chat_id: str,
-    request: UpdateTitleRequest,
+    request: UpdateChatInfoRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """更新对话标题
+    """更新对话信息（标题或模型）
     
     需要有效的 token 认证，只能修改用户自己的对话
-    标题超过 20 个字符会被自动截断
+    title 和 current_model 至少提供一个，title 超过 20 个字符会被自动截断
     """
-    # 验证对话存在且属于当前用户
-    chat = get_chat_by_id_and_uuid(chat_id, current_user.uuid)
-    if chat is None:
+    # 验证至少提供一个字段
+    if request.title is None and request.current_model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="对话不存在或无权访问"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="必须提供 title 或 current_model 至少一个字段"
         )
     
-    # 检查标题是否为空
-    if not request.title or not request.title.strip():
+    # 验证非空
+    if request.title is not None and (not request.title or not request.title.strip()):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="标题不能为空"
         )
     
-    # 调用 history.py 中的函数更新标题（会自动截断）
-    result = update_chat_title(chat_id, request.title, current_user.uuid)
-    
-    if not result["success"]:
+    if request.current_model is not None and (not request.current_model or not request.current_model.strip()):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.get("error", "更新标题失败")
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="模型 ID 不能为空"
         )
     
-    return UpdateTitleResponse(
-        chat_id=chat_id,
-        title=result["title"]
-    )
+    try:
+        # 更新标题
+        if request.title is not None:
+            update_chat_title(chat_id, request.title, current_user.uuid)
+        
+        # 更新模型
+        if request.current_model is not None:
+            update_chat_current_model(chat_id, request.current_model, current_user.uuid)
+        
+        # 返回更新后的信息
+        return UpdateChatInfoResponse(
+            chat_id=chat_id,
+            title=request.title,
+            current_model=request.current_model
+        )
+    except ChatNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="对话不存在"
+        )
+    except ChatAccessDeniedError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="无权访问该对话"
+        )
+    except DatabaseError as e:
+        print(f"更新对话信息时数据库错误：{e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新对话信息失败，请稍后重试"
+        )
+    except Exception as e:
+        print(f"更新对话信息时发生未预期的错误：{e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新对话信息失败"
+        )
 
 
 @app.post("/api/chat/{chat_id}/completions")

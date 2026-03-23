@@ -275,16 +275,21 @@ compress_max_retries: 2
 
 ### dynamic_config/models.json
 
-动态模型配置，符合openai标准models，支持热重载：
+动态模型配置，符合openai标准models列表结构，可以被openai sdk正确读取，支持热重载：
+id：唯一必须参数，将提供给前端作为模型选择的参考，并作为请求上游llm端点的model参数包含在请求体中
+capabilities：用于前后端之间声明多模态支持
+其余参数无意义
 
 ```json
 {
   "models": [
     {
       "id": "qwen3.5-plus",
-      "name": "通义千问 3.5 Plus",
-      "enabled": true
-    }
+      "object": "model",
+      "created": 1710000000,
+      "owned_by": "bailian",
+      "capabilities": ["text", "vision"]
+    },
   ]
 }
 ```

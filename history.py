@@ -6,6 +6,21 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 
+
+class ChatNotFoundError(Exception):
+    """对话不存在时抛出"""
+    pass
+
+
+class ChatAccessDeniedError(Exception):
+    """无权访问对话时抛出"""
+    pass
+
+
+class DatabaseError(Exception):
+    """数据库访问失败时抛出"""
+    pass
+
 # 使用 try-except 确保在不同 Python 版本下都能正确导入 uuid7 
 # Python 3.14 及以上版本标准库包含 uuid7，之前版本需要使用自带的 uuid7 实现
 try:
@@ -17,7 +32,7 @@ except ImportError:
         raise ImportError("Need uuid7 support for chat-id format, please use python 3.14+")
 
 from sqlmodel import SQLModel, Field, Session, select
-from sqlalchemy import desc
+from sqlalchemy import desc, exc as sqlalchemy_exc
 from openai import AsyncOpenAI
 
 from appinit import (
@@ -185,7 +200,6 @@ def truncate_title(title: str, max_chinese_chars: int = 20) -> str:
     
     return title
 
-
 def update_chat_title(chat_id: str, title: str, user_uuid: Optional[str] = None) -> dict:
     """更新对话标题
     
@@ -198,9 +212,13 @@ def update_chat_title(chat_id: str, title: str, user_uuid: Optional[str] = None)
         dict: {
             "success": bool,
             "chat_id": str,
-            "title": str,
-            "error": Optional[str]
+            "title": str
         }
+        
+    Raises:
+        ChatNotFoundError: 对话不存在
+        ChatAccessDeniedError: 无权访问该对话
+        DatabaseError: 数据库访问失败
     """
     engine = get_engine()
     
@@ -208,37 +226,32 @@ def update_chat_title(chat_id: str, title: str, user_uuid: Optional[str] = None)
     truncated_title = truncate_title(title, 20)
     
     with Session(engine) as session:
-        statement = select(Chat).where(Chat.chat_id == chat_id)
-        chat = session.exec(statement).first()
-        
-        if chat is None:
+        try:
+            statement = select(Chat).where(Chat.chat_id == chat_id)
+            chat = session.exec(statement).first()
+            
+            if chat is None:
+                raise ChatNotFoundError(f"对话 {chat_id} 不存在")
+            
+            # 如果提供了 user_uuid，验证所有权
+            if user_uuid is not None and chat.uuid != user_uuid:
+                raise ChatAccessDeniedError(f"用户无权访问对话 {chat_id}")
+            
+            chat.title = truncated_title
+            chat.updated_at = get_current_timestamp()
+            session.add(chat)
+            session.commit()
+            
             return {
-                "success": False,
+                "success": True,
                 "chat_id": chat_id,
-                "title": None,
-                "error": "对话不存在"
+                "title": truncated_title
             }
-        
-        # 如果提供了 user_uuid，验证所有权
-        if user_uuid is not None and chat.uuid != user_uuid:
-            return {
-                "success": False,
-                "chat_id": chat_id,
-                "title": None,
-                "error": "无权访问该对话"
-            }
-        
-        chat.title = truncated_title
-        chat.updated_at = get_current_timestamp()
-        session.add(chat)
-        session.commit()
-        
-        return {
-            "success": True,
-            "chat_id": chat_id,
-            "title": truncated_title,
-            "error": None
-        }
+        except sqlalchemy_exc.SQLAlchemyError as e:
+            # 数据库错误，回滚并抛出自定义异常
+            session.rollback()
+            print(f"数据库访问失败：{e}")
+            raise DatabaseError(f"更新对话标题失败：{e}")
 
 
 def _count_rounds(history_list: List[Dict[str, Any]]) -> int:
@@ -556,9 +569,13 @@ def append_history(
         session.add(chat)
         session.commit()
         
-        # 如果提供了 model，更新 current_model（使用同一个 session）
+        # 如果提供了 model，更新 current_model（使用同一个 session），内部检测是否需要更新
+        # 这一步的目的是，current_model 可能被前端通过请求接口写入一个无效值，后续模型调用时检查到了无效值，静默覆盖后，可以持久化正确的current_model，避免后续调用一直检查到无效值
         if model:
-            update_chat_current_model(chat_id, model, session=session)
+            try:
+                update_chat_current_model(chat_id, model, session=session)
+            except Exception as e:
+                print(f"警告：对话模型覆盖写入失败: {type(e).__name__}: {e}")
     
     # 检查是否需要触发异步出队
     current_rounds = _count_rounds(history_recent)
@@ -728,7 +745,12 @@ def chat_exists(chat_id: str) -> bool:
         return chat is not None
 
 
-def update_chat_current_model(chat_id: str, model: str, session: Optional[Session] = None) -> bool:
+def update_chat_current_model(
+    chat_id: str, 
+    model: str, 
+    user_uuid: Optional[str] = None, 
+    session: Optional[Session] = None
+) -> None:
     """更新对话的 current_model 字段
     
     仅在以下情况更新：
@@ -738,10 +760,13 @@ def update_chat_current_model(chat_id: str, model: str, session: Optional[Sessio
     Args:
         chat_id: 对话 ID
         model: 要设置的模型 ID
+        user_uuid: 用户 UUID，用于验证所有权（前端调用须提供，如果提供则验证，后端内部调用可不验证）
         session: 可选的 Session 对象，如果提供则使用该 Session，避免嵌套
         
-    Returns:
-        是否更新成功
+    Raises:
+        ChatNotFoundError: 对话不存在
+        ChatAccessDeniedError: 无权访问该对话（当提供 user_uuid 时）
+        DatabaseError: 数据库访问失败
     """
     engine = get_engine()
     
@@ -754,20 +779,29 @@ def update_chat_current_model(chat_id: str, model: str, session: Optional[Sessio
     try:
         statement = select(Chat).where(Chat.chat_id == chat_id)
         chat = session.exec(statement).first()
+        
         if chat is None:
-            return False
+            raise ChatNotFoundError(f"对话 {chat_id} 不存在")
+        
+        if user_uuid is not None and chat.uuid != user_uuid:
+            raise ChatAccessDeniedError(f"用户无权访问对话 {chat_id}")
         
         # 检查是否需要更新
         current_model = chat.current_model
         if current_model and current_model == model:
             # 已有相同的 model，无需更新
-            return True
+            return
         
         # 更新 current_model
         chat.current_model = model
         session.add(chat)
         session.commit()
-        return True
+        
+    except sqlalchemy_exc.SQLAlchemyError as e:
+        # 数据库错误，回滚并抛出自定义异常
+        session.rollback()
+        print(f"数据库访问失败：{e}")
+        raise DatabaseError(f"更新对话模型失败：{e}")
     finally:
         # 仅当自己创建的 session 时才关闭
         if should_close:

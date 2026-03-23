@@ -297,6 +297,7 @@ def ensure_new_column(db_path: str, table: str, column: str, column_type: str = 
     用法示例:
         ensure_new_column(str(DB_PATH), "chat", "current_model", "TEXT")
     """
+    print(f"警告：数据库工具函数被开启，检查 {table} 表中是否存在 {column} 列...")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
