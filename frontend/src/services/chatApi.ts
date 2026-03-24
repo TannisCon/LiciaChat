@@ -1,6 +1,42 @@
 const API_BASE_URL = '/api';
 const DEFAULT_TIMEOUT = 5000; // 5 秒超时
 
+class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+
+// 模型接口（OpenAI 标准格式）
+export interface Model {
+  id: string;
+  object: 'model';
+  created: number;
+  owned_by: string;
+  capabilities?: string[];
+}
+
+// 模型列表响应
+export interface ModelListResponse {
+  object: 'list';
+  data: Model[];
+}
+
+// 更新对话模型请求
+export interface UpdateChatModelRequest {
+  current_model: string;
+}
+
+// 更新对话模型响应
+export interface UpdateChatModelResponse {
+  chat_id: string;
+  current_model: string;
+}
+
 // 通用请求处理函数（带超时控制）
 async function handleRequest<T>(url: string, options?: RequestInit, timeout: number = DEFAULT_TIMEOUT): Promise<T> {
   const token = localStorage.getItem('access_token');
@@ -116,12 +152,77 @@ export interface HistoryMessage {
 export interface ChatHistoryResponse {
   chat_id: string;
   title: string;
+  current_model: string;
   history: HistoryMessage[];
 }
 
 // 获取对话历史
 export async function getChatHistory(chatId: string): Promise<ChatHistoryResponse> {
   return handleRequest<ChatHistoryResponse>(`${API_BASE_URL}/chat/${chatId}`);
+}
+
+/**
+ * 获取可用模型列表
+ * 超时时间：30 秒
+ * 
+ * 注意：重试逻辑应在调用方（如 store）中处理，避免重复请求
+ */
+export async function getModels(): Promise<ModelListResponse> {
+  const token = localStorage.getItem('access_token');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(`v1/models`, {
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const status = response.status;
+      if (status === 404) throw new HttpError(404, '模型列表接口不存在');
+      if (status === 401) throw new HttpError(401, '未授权，请重新登录');
+      if (status === 403) throw new HttpError(403, '无权访问模型列表');
+      if (status === 429) throw new HttpError(429, '请求过于频繁');
+      throw new HttpError(status, `HTTP ${status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (!data || !Array.isArray(data.data)) {
+      throw new Error('无效的模型列表格式');
+    }
+
+    return data as ModelListResponse;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof HttpError) throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('服务器无响应（超时）');
+    }
+    throw error;
+  }
+}
+
+/**
+ * 更新对话的当前模型
+ * 超时时间：5 秒
+ */
+export async function updateChatModel(
+  chatId: string,
+  modelId: string
+): Promise<UpdateChatModelResponse> {
+  return handleRequest<UpdateChatModelResponse>(
+    `${API_BASE_URL}/chat/${chatId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ current_model: modelId }),
+    },
+    5000 // 5 秒超时
+  );
 }
 
 // 流式对话请求参数

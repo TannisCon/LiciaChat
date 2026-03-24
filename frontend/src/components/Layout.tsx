@@ -12,12 +12,15 @@ import {
   LogIn,
   MoreVertical,
   Loader2,
+  ChevronDown,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import UserProfileModal from './UserProfileModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import EditTitleModal from './EditTitleModal';
-import { getChatList, createChat, deleteChat, updateChatTitle } from '../services/chatApi';
+import { getChatList, createChat, deleteChat, updateChatTitle, updateChatModel } from '../services/chatApi';
 import { exportChat } from '../lib/chatExport';
 
 interface UserSectionProps {
@@ -32,6 +35,19 @@ interface UserSectionProps {
 const getUserInitial = (username?: string): string => {
   if (!username) return 'U';
   return username.charAt(0).toUpperCase();
+};
+
+// 格式化模型名称：将"-"分隔的每个元素首字母大写（如果首字符是英文）
+const formatModelName = (name: string): string => {
+  return name.split('-').map(part => {
+    if (part.length === 0) return part;
+    const firstChar = part.charAt(0);
+    // 如果首字符是英文字母，大写它
+    if (/[a-zA-Z]/.test(firstChar)) {
+      return firstChar.toUpperCase() + part.slice(1);
+    }
+    return part;
+  }).join('-');
 };
 
 // 用户信息区域组件
@@ -363,13 +379,18 @@ const Sidebar: React.FC<{
 
 // 主布局组件
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentModel, setChatSessions, setCurrentChatId, chatSessions, isLoadingChats, currentChatId } = useChatStore();
+  const { currentModel, setChatSessions, setCurrentChatId, chatSessions, isLoadingChats, currentChatId, availableModels, setCurrentModel } = useChatStore();
   const { isAuthenticated, isLoading, user, logout } = useAuth();
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [createCooldown, setCreateCooldown] = useState(0); // 创建倒计时（秒）
+  
+  // 模型选择下拉菜单状态
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [isSwitchingModel, setIsSwitchingModel] = useState(false);
+  const [modelSwitchError, setModelSwitchError] = useState<string | null>(null);
   
   // 删除确认弹窗状态
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -610,6 +631,65 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     }
   };
 
+  // 切换模型
+  const handleSwitchModel = async (modelId: string) => {
+    if (!currentChatId || modelId === currentModel) {
+      setShowModelMenu(false);
+      return;
+    }
+
+    setIsSwitchingModel(true);
+    setModelSwitchError(null);
+
+    try {
+      await updateChatModel(currentChatId, modelId);
+      setCurrentModel(modelId);
+      setShowModelMenu(false);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '切换模型失败';
+      setModelSwitchError(errorMsg);
+      // 3 秒后清除错误
+      setTimeout(() => setModelSwitchError(null), 3000);
+    } finally {
+      setIsSwitchingModel(false);
+    }
+  };
+
+  // 用户登录后加载模型列表（使用 store 中的 fetchModels）
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const state = useChatStore.getState();
+    // 只在 idle 或 error 状态时请求
+    if (state.modelsState.status === 'idle' || state.modelsState.status === 'error') {
+      state.fetchModels();
+    }
+  }, [isAuthenticated]);
+
+  // 监听模型列表加载错误并显示 Toast
+  useEffect(() => {
+    // 订阅 store 中 modelsState 的变化
+    const unsubscribe = useChatStore.subscribe(
+      (state) => {
+        const modelsState = state.modelsState;
+        if (modelsState.status === 'error' && modelsState.error) {
+          setModelSwitchError(modelsState.error);
+          // 3 秒后清除错误
+          const timer = setTimeout(() => setModelSwitchError(null), 3000);
+          return () => clearTimeout(timer);
+        }
+      }
+    );
+    return unsubscribe;
+  }, []);
+
+  // 获取当前模型显示名称
+  const getCurrentModelName = () => {
+    if (!availableModels.length) return formatModelName(currentModel);
+    const model = availableModels.find(m => m.id === currentModel);
+    return model ? formatModelName(model.id) : formatModelName(currentModel);
+  };
+
   return (
     <div className="h-screen flex bg-zinc-900">
       {/* 侧边栏 */}
@@ -635,9 +715,66 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         <header className="h-14 bg-zinc-900 flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-zinc-400 text-sm">主模型:</span>
-            <span className="px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-sm font-medium border border-purple-500/30">
-              {currentModel}
-            </span>
+            <div className="relative">
+              <button
+                onClick={() => setShowModelMenu(!showModelMenu)}
+                disabled={isSwitchingModel || availableModels.length === 0}
+                className={`flex items-center gap-2 px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-sm font-medium border border-purple-500/30 hover:bg-purple-600/30 transition-colors ${
+                  isSwitchingModel || availableModels.length === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+              >
+                {isSwitchingModel ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>{getCurrentModelName()}</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              {/* 模型选择下拉菜单 */}
+              {showModelMenu && (
+                <>
+                  {/* 遮罩层 - 点击关闭菜单 */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowModelMenu(false)}
+                  />
+                  {/* 下拉菜单内容 */}
+                  <div className="absolute left-0 top-full mt-1 w-56 bg-zinc-800 rounded-lg shadow-xl border border-zinc-700 z-50 max-h-80 overflow-y-auto">
+                    {availableModels.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-zinc-400">
+                        暂无可用模型
+                      </div>
+                    ) : (
+                      availableModels.map((model) => (
+                        <button
+                          key={model.id}
+                          onClick={() => handleSwitchModel(model.id)}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-700 transition-colors ${
+                            currentModel === model.id ? 'text-purple-400 bg-purple-600/10' : 'text-zinc-300'
+                          }`}
+                        >
+                          <span className="flex-1 text-left">{formatModelName(model.id)}</span>
+                          {currentModel === model.id && (
+                            <Check className="w-4 h-4 ml-2 flex-shrink-0" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* 模型切换错误提示 Toast */}
+              {modelSwitchError && (
+                <div className="absolute left-0 top-full mt-2 w-max max-w-xs bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-60 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{modelSwitchError}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />

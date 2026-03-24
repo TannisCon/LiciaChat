@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatStore, type Message } from '../store/chatStore';
 import { useAuth } from '../hooks/useAuth';
-import { getChatHistory, streamChatCompletions } from '../services/chatApi';
+import { getChatHistory, streamChatCompletions, updateChatModel, type Model } from '../services/chatApi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -23,6 +23,34 @@ import {
 } from 'lucide-react';
 import 'katex/dist/katex.min.css';
 
+// Toast 通知组件
+interface ToastProps {
+  message: string;
+  type: 'error' | 'success' | 'info';
+  onClose: () => void;
+}
+
+const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = {
+    error: 'bg-red-600',
+    success: 'bg-green-600',
+    info: 'bg-blue-600',
+  }[type];
+
+  return (
+    <div className={`fixed top-8 left-1/2 transform -translate-x-1/2 z-50 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in`}>
+      {type === 'error' && <AlertCircle className="w-5 h-5" />}
+      <span>{message}</span>
+    </div>
+  );
+};
 
 // 获取用户头像首字符
 const getUserInitial = (username?: string): string => {
@@ -345,10 +373,13 @@ export const ChatPage: React.FC = () => {
     setError,
     error,
     refreshChatList,
+    availableModels,
+    setCurrentModel,
   } = useChatStore();
 
   const { isAuthenticated, user } = useAuth();
   const [inputValue, setInputValue] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' } | null>(null);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -438,6 +469,29 @@ export const ChatPage: React.FC = () => {
     }
   }, [isGenerating, messages, refreshChatList]);
 
+  // 同步当前对话的模型（在加载对话历史后调用）
+  const syncCurrentModel = useCallback(async (chatId: string, models: Model[]) => {
+    try {
+      const response = await getChatHistory(chatId);
+      const chatModel = response.current_model;
+      
+      // 检查该模型是否在模型列表中
+      const modelExists = models.some(m => m.id === chatModel);
+      
+      if (!modelExists && models.length > 0) {
+        // 不在列表中，自动切换到第一个模型
+        const firstModel = models[0].id;
+        await updateChatModel(chatId, firstModel);
+        setCurrentModel(firstModel);
+      } else {
+        setCurrentModel(chatModel);
+      }
+    } catch (err) {
+      console.error('同步模型失败:', err);
+      // 静默失败，使用默认模型
+    }
+  }, [setCurrentModel]);
+
   // 加载对话历史
   const loadChatHistory = useCallback(async () => {
     if (!currentChatId) {
@@ -456,12 +510,18 @@ export const ChatPage: React.FC = () => {
       setMessages(historyMessages);
       setChatTitle(response.title);
       setError(null);
+      
+      // 如果模型列表已加载，同步当前模型
+      if (availableModels.length > 0) {
+        await syncCurrentModel(currentChatId, availableModels);
+      }
     } catch (err) {
       console.error('加载对话历史失败:', err);
       setError(err instanceof Error ? err.message : '加载对话历史失败');
     }
-  }, [currentChatId, setMessages, setChatTitle, setError]);
+  }, [currentChatId, setMessages, setChatTitle, setError, availableModels, syncCurrentModel]);
 
+  // 切换对话时加载历史和同步模型
   useEffect(() => {
     if (isAuthenticated && currentChatId) {
       loadChatHistory();
@@ -644,6 +704,15 @@ export const ChatPage: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-zinc-900">
+      {/* Toast 通知 */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* 消息列表 */}
       <div 
         ref={messagesContainerRef}

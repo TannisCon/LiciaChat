@@ -430,7 +430,7 @@ async def handle_chat_completion(
     支持 OpenAI Chat Completions API 标准格式
     接受的参数包括：messages, model, temperature, max_tokens, top_p, 
     frequency_penalty, presence_penalty, stop, stream, user, enable_thinking 等
-    其中只有 messages 和 enable_thinking 会被使用，其他参数会被忽略但不会报错
+    其中只有 messages，model 和 enable_thinking 会被使用，其他参数会被接收但忽略
     
     BYOK 用户处理逻辑：
     1. 检查用户角色，如果不是 admin 则为 BYOK 用户

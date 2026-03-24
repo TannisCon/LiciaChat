@@ -136,7 +136,7 @@ LiciaChat/
 | GET | `/api/chat` | 获取对话列表 | 是 |
 | GET | `/api/chat/{chat_id}` | 获取对话完整历史 | 是 |
 | DELETE | `/api/chat/{chat_id}` | 删除对话 | 是 |
-| PATCH | `/api/chat/{chat_id}` | 更新对话标题 | 是 |
+| PATCH | `/api/chat/{chat_id}` | 更新对话标题和使用的模型 | 是 |
 | POST | `/api/chat/{chat_id}/completions` | 带持久化的对话补全 | 是 |
 | POST | `/v1/chat/completions` | OpenAI 兼容的无状态对话 | 是 |
 | GET | `/v1/models` | 获取可用模型列表 | 是 |
