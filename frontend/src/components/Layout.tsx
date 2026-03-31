@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import { createPortal } from 'react-dom';
 import { useChatStore, type ChatSession } from '../store/chatStore';
 import { useAuthStore, type UserInfo, useAuthStore as authStore } from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
@@ -16,10 +17,12 @@ import {
   Check,
   AlertCircle,
 } from 'lucide-react';
-import LoginModal from './LoginModal';
-import UserProfileModal from './UserProfileModal';
-import DeleteConfirmModal from './DeleteConfirmModal';
-import EditTitleModal from './EditTitleModal';
+
+// 懒加载 Modal 组件
+const LoginModal = lazy(() => import('./LoginModal'));
+const UserProfileModal = lazy(() => import('./UserProfileModal'));
+const DeleteConfirmModal = lazy(() => import('./DeleteConfirmModal'));
+const EditTitleModal = lazy(() => import('./EditTitleModal'));
 import { getChatList, createChat, deleteChat, updateChatTitle, updateChatModel } from '../services/chatApi';
 import { exportChat } from '../lib/chatExport';
 
@@ -119,6 +122,108 @@ interface ChatItemProps {
   onExportClick: (chat: ChatSession) => void;
 }
 
+// 下拉菜单内容组件（用于 Portal）
+const ChatItemMenu: React.FC<{
+  exportMenuOpen: boolean;
+  onToggleExportMenu: () => void;
+  onClose: () => void;
+  onEditTitleClick: () => void;
+  onExportClick: () => void;
+  onDeleteClick: () => void;
+  position: { top: number; left: number };
+}> = ({ exportMenuOpen, onToggleExportMenu, onClose, onEditTitleClick, onExportClick, onDeleteClick, position }) => {
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const [exportSubMenuPosition, setExportSubMenuPosition] = useState({ top: 0, left: 0 });
+
+  // 计算导出子菜单位置
+  useEffect(() => {
+    if (exportMenuOpen && exportButtonRef.current) {
+      const rect = exportButtonRef.current.getBoundingClientRect();
+      setExportSubMenuPosition({
+        top: rect.top,
+        left: rect.right,
+      });
+    }
+  }, [exportMenuOpen]);
+
+  return (
+    <>
+      {/* 遮罩层 */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      {/* 主菜单 */}
+      <div
+        className="fixed w-32 bg-zinc-700 rounded-lg shadow-xl border border-zinc-600 z-50"
+        style={{ top: position.top, left: position.left }}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+            onEditTitleClick();
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-400 hover:bg-zinc-600 rounded-t-lg transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <span>编辑标题</span>
+        </button>
+        {/* 导出对话选项 */}
+        <div className="relative">
+          <button
+            ref={exportButtonRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExportMenu();
+            }}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-600 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span>导出</span>
+            </span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          {/* 导出子菜单 */}
+          {exportMenuOpen && (
+            <div
+              className="fixed w-32 bg-zinc-700 rounded-r-lg shadow-xl border border-zinc-600 z-60 hover:bg-zinc-600 transition-colors rounded-r-lg"
+              style={{ top: exportSubMenuPosition.top, left: exportSubMenuPosition.left }}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                  onExportClick();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-600 rounded-lg transition-colors"
+              >
+                <span>导出为 JSON</span>
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="border-t border-zinc-600"></div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+            onDeleteClick();
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-zinc-600 rounded-b-lg transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>删除</span>
+        </button>
+      </div>
+    </>
+  );
+};
+
 const ChatItem: React.FC<ChatItemProps> = ({
   session,
   isSelected,
@@ -128,109 +233,81 @@ const ChatItem: React.FC<ChatItemProps> = ({
   onExportClick,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [mounted, setMounted] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // 客户端挂载
+  useEffect(() => {
+    // 使用 requestAnimationFrame 避免在 effect 中直接 setState
+    requestAnimationFrame(() => {
+      setMounted(true);
+    });
+  }, []);
+
+  const handleOpenMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowMenu(!showMenu);
+    setExportMenuOpen(false);
+    
+    // 计算菜单位置
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  };
+
+  const handleCloseMenu = useCallback(() => {
+    setShowMenu(false);
+    setExportMenuOpen(false);
+  }, []);
+
+  const handleToggleExportMenu = useCallback(() => {
+    setExportMenuOpen((prev) => !prev);
+  }, []);
+
+  const menuContent = (
+    <ChatItemMenu
+      exportMenuOpen={exportMenuOpen}
+      onToggleExportMenu={handleToggleExportMenu}
+      onClose={handleCloseMenu}
+      onEditTitleClick={() => onEditTitleClick(session)}
+      onExportClick={() => onExportClick(session)}
+      onDeleteClick={() => onDeleteClick(session)}
+      position={menuPosition}
+    />
+  );
 
   return (
-    <div
-      className={`group flex items-center gap-2 px-2 py-1 rounded-xl cursor-pointer transition-colors ${
-        isSelected
-          ? 'bg-zinc-700 text-zinc-100'
-          : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
-      }`}
-      onClick={() => onSelect(session.chat_id)}
-    >
-      <MessageSquare className="w-4 h-4 flex-shrink-0" />
-      <span className="flex-1 truncate text-sm">{session.title}</span>
-      
-      {/* 更多操作按钮 */}
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
+    <>
+      <div
+        className={`group flex items-center gap-2 px-2 py-1 rounded-xl cursor-pointer transition-colors ${
+          isSelected
+            ? 'bg-zinc-700 text-zinc-100'
+            : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
+        }`}
+        onClick={() => onSelect(session.chat_id)}
+      >
+        <MessageSquare className="w-4 h-4 flex-shrink-0" />
+        <span className="flex-1 truncate text-sm">{session.title}</span>
+        
+        {/* 更多操作按钮 */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowMenu(!showMenu);
-          }}
+          ref={buttonRef}
+          onClick={handleOpenMenu}
           className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-600 rounded transition-all"
         >
           <MoreVertical className="w-4 h-4" />
         </button>
-        
-        {/* 下拉菜单 */}
-        {showMenu && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => {
-                setShowMenu(false);
-                setShowExportMenu(false);
-              }}
-            />
-            <div className="absolute left-0 top-full mt-1 w-32 bg-zinc-700 rounded-lg shadow-xl border border-zinc-600 z-50">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onEditTitleClick(session);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-400 hover:bg-zinc-600 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>编辑标题</span>
-              </button>
-              {/* 导出对话选项 - 无分隔线 */}
-              <div className="relative">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowExportMenu(!showExportMenu);
-                  }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-600 transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    <span>导出对话</span>
-                  </span>
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                {/* 导出子菜单 */}
-                {showExportMenu && (
-                  <div className="absolute left-full top-0 ml-0 w-32 bg-zinc-700 rounded-r-lg shadow-xl border border-zinc-600 z-60">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowExportMenu(false);
-                        setShowMenu(false);
-                        onExportClick(session);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-600 rounded-r-lg transition-colors"
-                    >
-                      <span>导出为 JSON</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="border-t border-zinc-600"></div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onDeleteClick(session);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-zinc-600 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>删除</span>
-              </button>
-            </div>
-          </>
-        )}
       </div>
-    </div>
+      
+      {/* 使用 Portal 渲染下拉菜单到 body，避免被父容器 overflow 裁剪 */}
+      {showMenu && mounted && createPortal(menuContent, document.body)}
+    </>
   );
 };
 
@@ -333,7 +410,7 @@ const Sidebar: React.FC<{
       </div>
 
       {/* 历史对话列表 */}
-      <div className="flex-1 overflow-visible p-2 space-y-1">
+      <div className="flex-1 min-h-0 focus:outline-none overflow-y-auto p-2 space-y-1">
         {isLoadingChats || !hasLoadedChats ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
@@ -404,6 +481,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   // 编辑标题弹窗状态
   const [showEditTitleModal, setShowEditTitleModal] = useState(false);
   const [editingChat, setEditingChat] = useState<ChatSession | null>(null);
+  
+  // 通用错误 Toast 状态
+  const [toastError, setToastError] = useState<string | null>(null);
 
   const handleLoginSuccess = () => {
     setShowLoginModal(false);
@@ -474,7 +554,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       }
     } catch (error) {
       console.error('创建对话失败:', error);
-      alert('创建对话失败，请稍后重试');
+      setToastError('创建对话失败，请稍后重试');
+      setTimeout(() => setToastError(null), 3000);
     } finally {
       setIsCreatingChat(false);
       // 注意：冷却时间会继续倒计时，不在此处清除
@@ -627,7 +708,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       await exportChat(chat.chat_id);
     } catch (error) {
       console.error('导出对话失败:', error);
-      alert('导出对话失败，请稍后重试');
+      setToastError('导出对话失败，请稍后重试');
+      setTimeout(() => setToastError(null), 3000);
     }
   };
 
@@ -682,6 +764,25 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     );
     return unsubscribe;
   }, []);
+
+  // 预加载 Modal 组件（用户登录后 1.5 秒统一预加载）
+  useEffect(() => {
+    if (isAuthenticated) {
+      const timer = setTimeout(() => {
+        import('./UserProfileModal').catch(console.error);
+        import('./EditTitleModal').catch(console.error);
+        import('./DeleteConfirmModal').catch(console.error);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated]);
+
+  // 预加载 LoginModal（未登录时）
+  useEffect(() => {
+    if (!isAuthenticated) {
+      import('./LoginModal').catch(console.error);
+    }
+  }, [isAuthenticated]);
 
   // 获取当前模型显示名称
   const getCurrentModelName = () => {
@@ -766,14 +867,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   </div>
                 </>
               )}
-
-              {/* 模型切换错误提示 Toast */}
-              {modelSwitchError && (
-                <div className="absolute left-0 top-full mt-2 w-max max-w-xs bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-60 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{modelSwitchError}</span>
-                </div>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -817,45 +910,65 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </div>
 
-      {/* 登录弹窗 */}
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onSuccess={handleLoginSuccess}
-      />
+      {/* layout 通用错误提示 Toast - 固定定位到屏幕上方 1/3 处 */}
+      {(modelSwitchError || toastError) && (
+        <div className="fixed left-1/2 -translate-x-1/2 top-[33vh] bg-red-600 text-white px-6 py-3 rounded-lg shadow-xl text-sm z-[100] flex items-center gap-2 animate-fade-in">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="font-medium">{modelSwitchError || toastError}</span>
+        </div>
+      )}
 
-      {/* 用户信息弹窗 */}
-      <UserProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={user}
-        onLogout={logout}
-        onLogoutAndRefresh={handleLogoutAndRefresh}
-        onUserUpdate={(newUser) => {
-          // 更新 store 中的用户信息
-          authStore.getState().setUser(newUser);
-        }}
-      />
+      {/* 懒加载 Modal - 条件渲染 + Suspense */}
+      {showLoginModal && (
+        <Suspense fallback={null}>
+          <LoginModal
+            isOpen={showLoginModal}
+            onClose={() => setShowLoginModal(false)}
+            onSuccess={handleLoginSuccess}
+          />
+        </Suspense>
+      )}
 
-      {/* 删除确认弹窗 */}
-      <DeleteConfirmModal
-        isOpen={showDeleteModal}
-        chatTitle={deletingChat?.title || ''}
-        onClose={handleCloseDeleteModal}
-        onConfirm={handleDeleteConfirm}
-        isDeleting={deleteStatus === 'deleting'}
-        deleteStatus={deleteStatus}
-        errorMessage={deleteError}
-      />
+      {showProfileModal && (
+        <Suspense fallback={null}>
+          <UserProfileModal
+            isOpen={showProfileModal}
+            onClose={() => setShowProfileModal(false)}
+            user={user}
+            onLogout={logout}
+            onLogoutAndRefresh={handleLogoutAndRefresh}
+            onUserUpdate={(newUser) => {
+              authStore.getState().setUser(newUser);
+            }}
+          />
+        </Suspense>
+      )}
 
-      {/* 编辑标题弹窗 */}
-      <EditTitleModal
-        isOpen={showEditTitleModal}
-        onClose={handleCloseEditTitleModal}
-        onConfirm={handleEditTitleConfirm}
-        currentTitle={editingChat?.title || ''}
-        maxLength={24}
-      />
+      {showDeleteModal && (
+        <Suspense fallback={null}>
+          <DeleteConfirmModal
+            isOpen={showDeleteModal}
+            chatTitle={deletingChat?.title || ''}
+            onClose={handleCloseDeleteModal}
+            onConfirm={handleDeleteConfirm}
+            isDeleting={deleteStatus === 'deleting'}
+            deleteStatus={deleteStatus}
+            errorMessage={deleteError}
+          />
+        </Suspense>
+      )}
+
+      {showEditTitleModal && (
+        <Suspense fallback={null}>
+          <EditTitleModal
+            isOpen={showEditTitleModal}
+            onClose={handleCloseEditTitleModal}
+            onConfirm={handleEditTitleConfirm}
+            currentTitle={editingChat?.title || ''}
+            maxLength={24}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

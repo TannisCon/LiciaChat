@@ -157,7 +157,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未提供认证凭证"
+            detail="TOKEN_REQUIRED"
         )
     
     token = credentials.credentials
@@ -166,7 +166,7 @@ async def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效或过期的 token"
+            detail="INVALID_TOKEN"
         )
     
     return user
@@ -601,7 +601,7 @@ def refresh_access_token(request: Request, response: Response):
     if not refresh_token_value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未提供有效的认证信息"
+            detail="TOKEN_REQUIRED"
         )
     
     # 验证 refresh token
@@ -609,14 +609,14 @@ def refresh_access_token(request: Request, response: Response):
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="token 无效或已过期"
+            detail="INVALID_TOKEN"
         )
     
     email = payload.get("email")
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未提供有效的认证信息"
+            detail="INVALID_TOKEN"
         )
     
     # 检查用户是否存在
@@ -624,7 +624,7 @@ def refresh_access_token(request: Request, response: Response):
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户认证失败"
+            detail="INVALID_TOKEN"
         )
     
     # 生成新的 access token

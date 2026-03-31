@@ -49,7 +49,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, userR
   
   // 创建邀请表单状态
   const [inviteType, setInviteType] = useState<string>('user');
-  const [expiresDays, setExpiresDays] = useState<number>(0);
+  const [expiresDays, setExpiresDays] = useState<number>(1);
   const [maxUses, setMaxUses] = useState<number>(1);
   const [note, setNote] = useState<string>('');
   
@@ -443,7 +443,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, userR
                       <input
                         type="number"
                         value={expiresDays}
-                        onChange={(e) => setExpiresDays(parseInt(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          // trusted 用户不允许输入 0 或空值
+                          if (userRole !== 'admin') {
+                            if (!value || value < 1) {
+                              setExpiresDays(1);
+                            } else {
+                              setExpiresDays(value);
+                            }
+                          } else {
+                            // 管理员可以输入 0 或 1-365
+                            setExpiresDays(value || 0);
+                          }
+                        }}
                         min={userRole === 'admin' ? 0 : 1}
                         max={userRole === 'admin' ? 365 : 30}
                         disabled={isCreating}

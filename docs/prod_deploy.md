@@ -236,7 +236,26 @@ server {
         
         # 禁用缓冲（流式响应必需）
         proxy_buffering off;
+        proxy_cache off;
+    	  proxy_redirect off;
         proxy_cache_bypass $http_upgrade;
+
+        # 禁止缓存
+    	  add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+    }
+    location /v1/ {
+        proxy_pass http://127.0.0.1:8000;  # 末尾无斜杠，路径原样透传
+        proxy_set_header X-Real-IP $http_cf_connecting_ip;
+        proxy_set_header X-Forwarded-For $http_cf_connecting_ip;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_redirect off;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
     }
 
     # 禁止访问敏感文件

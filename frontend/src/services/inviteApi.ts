@@ -1,4 +1,4 @@
-const API_BASE_URL = '/api';
+import { authClient } from './apiClient';
 
 // 邀请码信息接口
 export interface InviteCodeItem {
@@ -40,126 +40,38 @@ export interface DeleteInviteCodeResponse {
 /**
  * 创建邀请码
  * @param data 创建邀请码的请求数据
- * @param signal AbortSignal 用于超时控制
+ * @param _signal AbortSignal 用于超时控制（暂不使用）
  */
+
 export async function createInviteCode(
   data: CreateInviteCodeRequest,
-  signal?: AbortSignal
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _signal?: AbortSignal
 ): Promise<CreateInviteCodeResponse> {
-  // 创建 AbortController 用于超时控制
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, 5000); // 5 秒超时
-
-  const token = localStorage.getItem('access_token');
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/invite`, {
-      method: 'POST',
-      signal: signal || controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(data),
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '请求失败' }));
-      throw new Error(error.detail || '请求失败');
-    }
-
-    return response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('服务器无响应，请检查网络连接');
-    }
-    throw error;
-  }
+  const response = await authClient.post<CreateInviteCodeResponse>('/user/invite', data);
+  return response.data;
 }
 
 /**
  * 获取邀请码列表
- * @param signal AbortSignal 用于超时控制
+ * @param _signal AbortSignal 用于超时控制（暂不使用）
  */
-export async function getInviteCodes(signal?: AbortSignal): Promise<GetInviteCodesResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, 5000); // 5 秒超时
-
-  const token = localStorage.getItem('access_token');
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/invite`, {
-      method: 'GET',
-      signal: signal || controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '请求失败' }));
-      throw new Error(error.detail || '请求失败');
-    }
-
-    return response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('服务器无响应，请检查网络连接');
-    }
-    throw error;
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function getInviteCodes(_signal?: AbortSignal): Promise<GetInviteCodesResponse> {
+  const response = await authClient.get<GetInviteCodesResponse>('/user/invite');
+  return response.data;
 }
 
 /**
  * 删除邀请码
  * @param code 邀请码
- * @param signal AbortSignal 用于超时控制
+ * @param _signal AbortSignal 用于超时控制（暂不使用）
  */
 export async function deleteInviteCode(
   code: string,
-  signal?: AbortSignal
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _signal?: AbortSignal
 ): Promise<DeleteInviteCodeResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, 5000); // 5 秒超时
-
-  const token = localStorage.getItem('access_token');
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/invite/${code}`, {
-      method: 'DELETE',
-      signal: signal || controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '请求失败' }));
-      throw new Error(error.detail || '请求失败');
-    }
-
-    return response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('服务器无响应，请检查网络连接');
-    }
-    throw error;
-  }
+  const response = await authClient.delete<DeleteInviteCodeResponse>(`/user/invite/${code}`);
+  return response.data;
 }

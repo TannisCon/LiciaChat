@@ -1,15 +1,4 @@
-const API_BASE_URL = '/api';
-const DEFAULT_TIMEOUT = 5000; // 5 秒超时
-
-class HttpError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'HttpError';
-    this.status = status;
-  }
-}
+import { authClient, modelsClient } from './apiClient';
 
 // 模型接口（OpenAI 标准格式）
 export interface Model {
@@ -35,44 +24,6 @@ export interface UpdateChatModelRequest {
 export interface UpdateChatModelResponse {
   chat_id: string;
   current_model: string;
-}
-
-// 通用请求处理函数（带超时控制）
-async function handleRequest<T>(url: string, options?: RequestInit, timeout: number = DEFAULT_TIMEOUT): Promise<T> {
-  const token = localStorage.getItem('access_token');
-  
-  // 创建 AbortController 用于取消请求
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        ...options?.headers,
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '请求失败' }));
-      throw new Error(error.detail || '请求失败');
-    }
-
-    return response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('服务器无响应，请检查网络连接');
-    }
-    throw error;
-  }
 }
 
 // 对话信息接口
@@ -112,36 +63,6 @@ export interface UpdateTitleResponse {
   title: string;
 }
 
-// 获取对话列表
-export async function getChatList(): Promise<ChatListResponse> {
-  return handleRequest<ChatListResponse>(`${API_BASE_URL}/chat`);
-}
-
-// 创建新对话
-export async function createChat(): Promise<CreateChatResponse> {
-  return handleRequest<CreateChatResponse>(`${API_BASE_URL}/chat`, {
-    method: 'POST',
-  });
-}
-
-// 删除对话
-export async function deleteChat(chatId: string): Promise<DeleteChatResponse> {
-  return handleRequest<DeleteChatResponse>(`${API_BASE_URL}/chat/${chatId}`, {
-    method: 'DELETE',
-  });
-}
-
-// 更新对话标题
-export async function updateChatTitle(
-  chatId: string,
-  title: string
-): Promise<UpdateTitleResponse> {
-  return handleRequest<UpdateTitleResponse>(`${API_BASE_URL}/chat/${chatId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ title }),
-  });
-}
-
 // 对话历史消息接口
 export interface HistoryMessage {
   role: 'user' | 'assistant';
@@ -156,73 +77,75 @@ export interface ChatHistoryResponse {
   history: HistoryMessage[];
 }
 
-// 获取对话历史
+/**
+ * 获取对话列表
+ */
+export async function getChatList(): Promise<ChatListResponse> {
+  const response = await authClient.get<ChatListResponse>('/chat');
+  return response.data;
+}
+
+/**
+ * 创建新对话
+ * 注意：传递空对象 {} 作为 data 参数，确保 axios 设置 Content-Type: application/json 头
+ * （CDN 要求 POST 请求必须包含此头）
+ */
+export async function createChat(): Promise<CreateChatResponse> {
+  const response = await authClient.post<CreateChatResponse>('/chat', {});
+  return response.data;
+}
+
+/**
+ * 删除对话
+ */
+export async function deleteChat(chatId: string): Promise<DeleteChatResponse> {
+  const response = await authClient.delete<DeleteChatResponse>(`/chat/${chatId}`);
+  return response.data;
+}
+
+/**
+ * 更新对话标题
+ */
+export async function updateChatTitle(
+  chatId: string,
+  title: string
+): Promise<UpdateTitleResponse> {
+  const response = await authClient.patch<UpdateTitleResponse>(`/chat/${chatId}`, {
+    title,
+  });
+  return response.data;
+}
+
+/**
+ * 获取对话历史
+ */
 export async function getChatHistory(chatId: string): Promise<ChatHistoryResponse> {
-  return handleRequest<ChatHistoryResponse>(`${API_BASE_URL}/chat/${chatId}`);
+  const response = await authClient.get<ChatHistoryResponse>(`/chat/${chatId}`);
+  return response.data;
 }
 
 /**
  * 获取可用模型列表
- * 超时时间：30 秒
- * 
+ * 使用 modelsClient（v1/models 没有/api/前缀）
+ *
  * 注意：重试逻辑应在调用方（如 store）中处理，避免重复请求
  */
 export async function getModels(): Promise<ModelListResponse> {
-  const token = localStorage.getItem('access_token');
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-  try {
-    const response = await fetch(`v1/models`, {
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 404) throw new HttpError(404, '模型列表接口不存在');
-      if (status === 401) throw new HttpError(401, '未授权，请重新登录');
-      if (status === 403) throw new HttpError(403, '无权访问模型列表');
-      if (status === 429) throw new HttpError(429, '请求过于频繁');
-      throw new HttpError(status, `HTTP ${status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    if (!data || !Array.isArray(data.data)) {
-      throw new Error('无效的模型列表格式');
-    }
-
-    return data as ModelListResponse;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof HttpError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('服务器无响应（超时）');
-    }
-    throw error;
-  }
+  const response = await modelsClient.get<ModelListResponse>('v1/models');
+  return response.data;
 }
 
 /**
  * 更新对话的当前模型
- * 超时时间：5 秒
  */
 export async function updateChatModel(
   chatId: string,
   modelId: string
 ): Promise<UpdateChatModelResponse> {
-  return handleRequest<UpdateChatModelResponse>(
-    `${API_BASE_URL}/chat/${chatId}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ current_model: modelId }),
-    },
-    5000 // 5 秒超时
-  );
+  const response = await authClient.patch<UpdateChatModelResponse>(`/chat/${chatId}`, {
+    current_model: modelId,
+  });
+  return response.data;
 }
 
 // 流式对话请求参数
@@ -269,7 +192,7 @@ export interface ChatError {
 
 /**
  * 流式对话 API
- * 使用 AbortController 允许取消请求
+ * 注意：此函数继续使用原生 fetch，因为 SSE 流式传输不适合用 axios 处理
  */
 export async function streamChatCompletions(
   chatId: string,
@@ -277,13 +200,13 @@ export async function streamChatCompletions(
   signal: AbortSignal
 ): Promise<AsyncGenerator<ChatChunk | ChatError, void, unknown>> {
   const token = localStorage.getItem('access_token');
-  
-  const response = await fetch(`${API_BASE_URL}/chat/${chatId}/completions`, {
+
+  const response = await fetch(`/api/chat/${chatId}/completions`, {
     method: 'POST',
     signal,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       messages: request.messages,
@@ -292,7 +215,9 @@ export async function streamChatCompletions(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: '请求失败', type: 'http_error' } }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: { message: '请求失败', type: 'http_error' } }));
     throw new Error(error.error?.message || '请求失败');
   }
 
@@ -307,13 +232,13 @@ export async function streamChatCompletions(
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         // 解析 SSE 格式的数据
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // 保留最后不完整的一行
-        
+
         for (const line of lines) {
           const trimmedLine = line.trim();
           if (trimmedLine.startsWith('data: ')) {

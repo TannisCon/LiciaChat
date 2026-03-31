@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getModels, getChatList } from '../services/chatApi';
 import type { Model } from '../services/chatApi';
 
 // 消息接口
@@ -184,7 +185,6 @@ export const useChatStore = create<ChatState>((set) => ({
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const { getModels } = await import('../services/chatApi');
         const modelList = await getModels();
         
         set({
@@ -238,7 +238,6 @@ export const useChatStore = create<ChatState>((set) => ({
   
   // 刷新对话列表（保持当前选中对话不变）
   refreshChatList: async () => {
-    const { getChatList } = await import('../services/chatApi');
     try {
       const chatListResponse = await getChatList();
       const sortedChats = chatListResponse.chats.sort((a, b) => 

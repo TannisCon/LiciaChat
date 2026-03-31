@@ -243,7 +243,7 @@ const MessageItem = React.memo(({ message, userUsername, isStreaming }: { messag
                 </div>
               ) : message.content ? (
                 // AI 回复：进行 Markdown 解析和代码块渲染
-                <div className="prose prose-invert max-w-none text-zinc-100/90 leading-relaxed break-words overflow-x-auto">
+                <div className="prose prose-invert max-w-none text-zinc-100/90 leading-relaxed break-words">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeRaw, rehypeKatex]}
@@ -392,7 +392,7 @@ export const ChatPage: React.FC = () => {
   const [showScrollButton, setShowScrollButton] = useState(false); // 是否显示回到底部按钮
   
   // 检测是否在底部的阈值（像素）
-  const BOTTOM_THRESHOLD = 80;
+  const BOTTOM_THRESHOLD = 100;
   
   // 防抖定时器 ref
   const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -444,6 +444,12 @@ export const ChatPage: React.FC = () => {
       scrollToBottom();
     }
   }, [messages, isGenerating, autoScroll, scrollToBottom]);
+
+  // 切换对话时重置自动滚动状态
+  useEffect(() => {
+    setAutoScroll(true);
+    setShowScrollButton(false);
+  }, [currentChatId]);
 
   // 清理防抖定时器
   useEffect(() => {
@@ -696,9 +702,11 @@ export const ChatPage: React.FC = () => {
     []
   );
 
-  if (!isAuthenticated) {
-    return null;
-  }
+  // 注意：未登录时返回 null 会导致 Suspense fallback 失效
+  // 认证守卫由 Layout.tsx 中的遮罩层统一处理
+  // if (!isAuthenticated) {
+  //   return null;
+  // }
 
   const userUsername = user?.username || undefined;
 
@@ -716,7 +724,7 @@ export const ChatPage: React.FC = () => {
       {/* 消息列表 */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto relative"
+        className="flex-1 min-h-0 overflow-y-auto relative focus:outline-none selection:bg-zinc-500/50 selection:text-white scrollbar-gutter-stable"
         onScroll={handleScroll}
       >
         {messages.length === 0 && !error ? (
@@ -741,7 +749,13 @@ export const ChatPage: React.FC = () => {
               <div className="sticky bottom-4 flex justify-center pointer-events-none">
                 <button
                   onClick={scrollToBottom}
-                  className="pointer-events-auto flex items-center justify-center w-10 h-10 bg-blue-600/60 backdrop-blur-md border border-white/10 hover:bg-blue-500/90 text-white rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  className={`
+                    pointer-events-auto flex items-center justify-center w-10 h-10 
+                    bg-blue-600/60 backdrop-blur-md border border-white/10 
+                    text-white rounded-full shadow-lg 
+                    transition-all duration-200 hover:scale-110 active:scale-95
+                    ${isGenerating ? 'animate-breathing' : ''}
+                  `}
                 >
                   <ArrowDown className="w-5 h-5" />
                 </button>

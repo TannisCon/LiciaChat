@@ -277,7 +277,7 @@ compress_max_retries: 2
 
 动态模型配置，符合openai标准models列表结构，可以被openai sdk正确读取，支持热重载：
 id：唯一必须参数，将提供给前端作为模型选择的参考，并作为请求上游llm端点的model参数包含在请求体中
-capabilities：用于前后端之间声明多模态支持
+capabilities：用于前后端之间声明多模态支持，"text"代表基础文本生成，"vision"代表图片理解，"reasoning"代表可启用/关闭思考模式 （前端尚不支持无法启用思考模式的模型）
 其余参数无意义
 
 ```json
