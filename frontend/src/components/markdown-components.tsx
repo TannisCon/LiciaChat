@@ -1,5 +1,6 @@
 import React from 'react';
 import { CodeBlock, InlineCode } from './CodeBlock';
+import { MermaidBlock } from './MermaidBlock';
 
 // 提取文本内容的辅助函数
 const extractText = (node: React.ReactNode): string => {
@@ -52,17 +53,23 @@ export const markdownComponents = {
     ) as React.ReactElement<{ className?: string; children?: React.ReactNode }> | undefined;
     
     if (codeElement) {
+      const className = codeElement.props.className || '';
+      
       // 使用 CodeBlock 渲染所有 pre > code 结构（CodeBlock 内部会处理无效语言）
-      return <CodeBlock className={codeElement.props.className || ''}>{codeElement.props.children}</CodeBlock>;
+      return <CodeBlock className={className}>{codeElement.props.children}</CodeBlock>;
     }
     // 没有 code 元素，返回原始内容
     return <>{children}</>;
   },
   code: ({ children, className }: React.HTMLAttributes<HTMLElement>) => {
-    // 检查是否有 language 类名，如果有说明是代码块中的 code，应该已经被 pre 处理了
+    // 检查是否有 language 类名，如果有说明是代码块中的 code
     const match = /language-(\w+)/.exec(className || '');
     if (match) {
-      // 这是代码块中的 code，但 pre 没有被调用（异常情况），使用 CodeBlock 渲染
+      // 先检查是否是 mermaid，如果是则使用 MermaidBlock 渲染
+      if (match[1] === 'mermaid') {
+        return <MermaidBlock>{children}</MermaidBlock>;
+      }
+      // 其他语言使用 CodeBlock 渲染
       return <CodeBlock className={className}>{children}</CodeBlock>;
     }
     

@@ -20,6 +20,7 @@ import {
   AlertCircle,
   BarChart3,
   ArrowDown,
+  Brain,
 } from 'lucide-react';
 import 'katex/dist/katex.min.css';
 
@@ -238,7 +239,7 @@ const MessageItem = React.memo(({ message, userUsername, isStreaming }: { messag
             <div className="relative">
               {isUser ? (
                 // 用户消息：纯文本显示，不进行 Markdown 解析
-                <div className="whitespace-pre-wrap break-words text-zinc-100/90 leading-relaxed">
+                <div className="whitespace-pre-wrap break-all text-zinc-100/90 leading-relaxed">
                   {message.content}
                 </div>
               ) : message.content ? (
@@ -390,12 +391,31 @@ export const ChatPage: React.FC = () => {
   // 滚动相关状态
   const [autoScroll, setAutoScroll] = useState(true); // 是否自动滚动
   const [showScrollButton, setShowScrollButton] = useState(false); // 是否显示回到底部按钮
+  const [inputAreaHeight, setInputAreaHeight] = useState(0); // 输入区域实际高度
   
   // 检测是否在底部的阈值（像素）
-  const BOTTOM_THRESHOLD = 100;
+  const BOTTOM_THRESHOLD = 120;
   
   // 防抖定时器 ref
   const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
+
+  // 监听输入区域高度变化，使用 ResizeObserver
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setInputAreaHeight(entry.contentRect.height);
+      }
+    });
+
+    if (inputAreaRef.current) {
+      observer.observe(inputAreaRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   // 检查是否在底部
   const checkIsAtBottom = useCallback(() => {
@@ -711,7 +731,7 @@ export const ChatPage: React.FC = () => {
   const userUsername = user?.username || undefined;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-zinc-900">
+    <div className="relative flex-1 min-h-0 bg-zinc-900">
       {/* Toast 通知 */}
       {toast && (
         <Toast
@@ -724,8 +744,9 @@ export const ChatPage: React.FC = () => {
       {/* 消息列表 */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto relative focus:outline-none selection:bg-zinc-500/50 selection:text-white scrollbar-gutter-stable"
+        className="h-full overflow-y-auto focus:outline-none selection:bg-zinc-500/50 selection:text-white scrollbar-gutter-stable"
         onScroll={handleScroll}
+        style={{ paddingBottom: `calc(120px + ${inputAreaHeight}px)` }}
       >
         {messages.length === 0 && !error ? (
           <EmptyState />
@@ -746,7 +767,7 @@ export const ChatPage: React.FC = () => {
             
             {/* 悬浮回到底部按钮 - 位于消息列表内部底部 */}
             {showScrollButton && (
-              <div className="sticky bottom-4 flex justify-center pointer-events-none">
+              <div className="sticky -bottom-20 flex justify-center pointer-events-none">
                 <button
                   onClick={scrollToBottom}
                   className={`
@@ -768,8 +789,11 @@ export const ChatPage: React.FC = () => {
       </div>
 
       {/* 输入区域 */}
-      <div className="bg-zinc-900 px-4 py-6">
-        <div className="max-w-3xl mx-auto">
+      <div 
+        ref={inputAreaRef}
+        className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-zinc-900/90 via-zinc-900/60 to-transparent pl-6 px-4 py-6 pointer-events-none"
+      >
+        <div className="max-w-3xl mx-auto pointer-events-auto">
           {/* 输入框容器 */}
           <div className="relative">
             <textarea
@@ -777,10 +801,10 @@ export const ChatPage: React.FC = () => {
               value={inputValue}
               onChange={handleTextareaInput}
               onKeyDown={handleKeyDown}
-              placeholder="输入您的问题..."
+              placeholder="我在听..."
               // disabled={isGenerating}
               rows={3}
-              className="w-full bg-zinc-800 text-zinc-100 rounded-xl px-3 py-2 pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 scrollbar-gutter-stable"
+              className="w-full bg-zinc-800/80 backdrop-blur-md text-zinc-100 break-all rounded-xl px-3 py-2 pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 border border-zinc-700 scrollbar-gutter-stable"
               style={{ 
                 minHeight: '80px', 
                 maxHeight: '300px',
@@ -795,7 +819,7 @@ export const ChatPage: React.FC = () => {
                   ? 'bg-red-600 hover:bg-red-500 text-white'
                   : inputValue.trim()
                   ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                  : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-700 text-zinc-500'
               }`}
             >
               {isGenerating ? (
@@ -817,9 +841,12 @@ export const ChatPage: React.FC = () => {
                   : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
               }`}
             >
-              <Sparkles className="w-4 h-4" />
+              <Brain className="w-4 h-4" />
               <span className="text-sm">深度思考</span>
             </button>
+            <span className="absolute left-1/2 -translate-x-1/2 text-center text-center text-xs text-zinc-500">
+              AI 也可能会犯错，请核查重要信息。
+            </span>
             <span className="text-xs text-zinc-500">
               按 Enter 发送，Shift+Enter 换行
             </span>

@@ -456,7 +456,7 @@ const Sidebar: React.FC<{
 
 // 主布局组件
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentModel, setChatSessions, setCurrentChatId, chatSessions, isLoadingChats, currentChatId, availableModels, setCurrentModel } = useChatStore();
+  const { currentModel, setChatSessions, setCurrentChatId, chatSessions, isLoadingChats, currentChatId, availableModels, setCurrentModel, chatTitle } = useChatStore();
   const { isAuthenticated, isLoading, user, logout } = useAuth();
 
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -813,7 +813,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* 主区域 */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* 顶部导航栏 */}
-        <header className="h-14 bg-zinc-900 flex items-center justify-between px-4 flex-shrink-0">
+        <header className="h-12 bg-zinc-900 flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-zinc-400 text-sm">主模型:</span>
             <div className="relative">
@@ -868,6 +868,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 </>
               )}
             </div>
+            
+            {/* 分隔符 */}
+            {currentChatId && (
+              <span className="text-zinc-600 mx-2">|</span>
+            )}
+            
+            {/* 当前对话标题 */}
+            {currentChatId && (
+              <span className="text-zinc-300 text-sm font-medium truncate max-w-[240px]" >
+                {chatTitle || ''}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
