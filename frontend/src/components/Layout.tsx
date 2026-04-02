@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useChatStore, type ChatSession } from '../store/chatStore';
 import { useAuthStore, type UserInfo, useAuthStore as authStore } from '../store/authStore';
@@ -14,6 +14,7 @@ import {
   MoreVertical,
   Loader2,
   ChevronDown,
+  ChevronUp,
   Check,
   AlertCircle,
 } from 'lucide-react';
@@ -38,6 +39,208 @@ interface UserSectionProps {
 const getUserInitial = (username?: string): string => {
   if (!username) return 'U';
   return username.charAt(0).toUpperCase();
+};
+
+// 按时间分组对话的工具函数
+// 将 UTC 时间转换为本地时间后进行分组
+const groupChatsByTime = (sessions: ChatSession[]) => {
+  const now = new Date();
+  // 获取本地日期的"今天零点"
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayTimestamp = today.getTime();
+  
+  const sevenDaysAgo = todayTimestamp - (7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = todayTimestamp - (30 * 24 * 60 * 60 * 1000);
+  
+  const last7Days: ChatSession[] = [];
+  const last30Days: ChatSession[] = [];
+  const earlier: ChatSession[] = [];
+  
+  sessions.forEach(session => {
+    // 后端返回 UNIX 秒级时间戳（UTC），需要乘以 1000 转换为毫秒
+    const sessionTimestamp = session.updated_at * 1000;
+    
+    if (sessionTimestamp >= sevenDaysAgo) {
+      last7Days.push(session);
+    } else if (sessionTimestamp >= thirtyDaysAgo) {
+      last30Days.push(session);
+    } else {
+      earlier.push(session);
+    }
+  });
+  
+  return { last7Days, last30Days, earlier };
+};
+
+// 分组标签组件（不可互动的静态标签）
+interface ChatGroupLabelProps {
+  label: string;
+  count: number;
+}
+
+const ChatGroupLabel: React.FC<ChatGroupLabelProps> = ({ label, count }) => {
+  return (
+    <div className="flex items-center justify-between px-3 py-1.5 text-xs text-zinc-400 pointer-events-none">
+      <span className="font-medium">{label}</span>
+      {count > 0 && (
+        <span className="px-2 py-0.5 bg-zinc-800 rounded-full text-xs text-zinc-400 font-medium">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+};
+
+// 分组对话列表组件
+interface GroupedChatListProps {
+  chatSessions: ChatSession[];
+  currentChatId: string | null;
+  onSelect: (chatId: string) => void;
+  onDeleteClick: (chat: ChatSession) => void;
+  onEditTitleClick: (chat: ChatSession) => void;
+  onExportClick: (chat: ChatSession) => void;
+}
+
+const GroupedChatList: React.FC<GroupedChatListProps> = ({
+  chatSessions,
+  currentChatId,
+  onSelect,
+  onDeleteClick,
+  onEditTitleClick,
+  onExportClick,
+}) => {
+  // 使用 useMemo 缓存分组结果
+  const { last7Days, last30Days, earlier } = useMemo(
+    () => groupChatsByTime(chatSessions),
+    [chatSessions]
+  );
+
+  return (
+    <div className="space-y-2">
+      {/* 最近 7 天 - 静态标签 */}
+      {last7Days.length > 0 && (
+        <div>
+          <ChatGroupLabel label="最近 7 天" count={last7Days.length} />
+          <div className="space-y-1">
+            {last7Days.map((session) => (
+              <ChatItem
+                key={session.chat_id}
+                session={session}
+                isSelected={currentChatId === session.chat_id}
+                onSelect={onSelect}
+                onDeleteClick={onDeleteClick}
+                onEditTitleClick={onEditTitleClick}
+                onExportClick={onExportClick}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 最近 30 天 - 静态标签 */}
+      {last30Days.length > 0 && (
+        <div>
+          <ChatGroupLabel label="最近 30 天" count={last30Days.length} />
+          <div className="space-y-1">
+            {last30Days.map((session) => (
+              <ChatItem
+                key={session.chat_id}
+                session={session}
+                isSelected={currentChatId === session.chat_id}
+                onSelect={onSelect}
+                onDeleteClick={onDeleteClick}
+                onEditTitleClick={onEditTitleClick}
+                onExportClick={onExportClick}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 更早对话 - 可折叠标签 */}
+      {earlier.length > 0 && (
+        <CollapsibleChatGroup
+          label="更早对话"
+          count={earlier.length}
+          sessions={earlier}
+          defaultExpanded={true}
+          currentChatId={currentChatId}
+          onSelect={onSelect}
+          onDeleteClick={onDeleteClick}
+          onEditTitleClick={onEditTitleClick}
+          onExportClick={onExportClick}
+        />
+      )}
+    </div>
+  );
+};
+
+// 可折叠分组组件（用于"更早对话"）
+interface CollapsibleChatGroupProps {
+  label: string;
+  count: number;
+  sessions: ChatSession[];
+  defaultExpanded?: boolean;
+  currentChatId: string | null;
+  onSelect: (chatId: string) => void;
+  onDeleteClick: (chat: ChatSession) => void;
+  onEditTitleClick: (chat: ChatSession) => void;
+  onExportClick: (chat: ChatSession) => void;
+}
+
+const CollapsibleChatGroup: React.FC<CollapsibleChatGroupProps> = ({
+  label,
+  count,
+  sessions,
+  defaultExpanded = true,
+  currentChatId,
+  onSelect,
+  onDeleteClick,
+  onEditTitleClick,
+  onExportClick,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  
+  return (
+    <div className="mb-2">
+      {/* 分组标题 - 可点击折叠/展开 */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800/50 rounded-lg transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          {isExpanded ? (
+            <ChevronDown className="w-3 h-3" />
+          ) : (
+            <ChevronUp className="w-3 h-3" />
+          )}
+          <span className="font-medium">{label}</span>
+        </div>
+        {count > 0 && (
+          <span className="px-2 py-0.5 bg-zinc-800 rounded-full text-xs">
+            {count}
+          </span>
+        )}
+      </button>
+      
+      {/* 对话列表 */}
+      {isExpanded && (
+        <div className="mt-1 space-y-1">
+          {sessions.map((session) => (
+            <ChatItem
+              key={session.chat_id}
+              session={session}
+              isSelected={currentChatId === session.chat_id}
+              onSelect={onSelect}
+              onDeleteClick={onDeleteClick}
+              onEditTitleClick={onEditTitleClick}
+              onExportClick={onExportClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 // 格式化模型名称：将"-"分隔的每个元素首字母大写（如果首字符是英文）
@@ -361,7 +564,7 @@ const Sidebar: React.FC<{
   }
 
   return (
-    <div className="w-72 bg-zinc-900 flex flex-col flex-shrink-0 transition-all duration-300" style={{ zIndex: 30 }}>
+    <div className="w-72 bg-zinc-900 flex flex-col flex-shrink-0 transition-[width,transform] duration-300 h-[100dvh]" style={{ zIndex: 30 }}>
       {/* 顶部操作栏 */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
@@ -370,7 +573,7 @@ const Sidebar: React.FC<{
               <img src="/licia_32.png" alt="Licia Logo" className="w-8 h-8" />
               <span className="font-bold text-xl text-zinc-100">LiciaChat</span>
             </div>
-            <span className="text-base text-blue-400 font-medium -mt-1 ml-5"> - 心似双丝网，轻绾千千结</span>
+            <span className="hidden lg:block text-sm text-blue-400/80 font-medium -mt-1 ml-10"> 心似双丝网，轻绾千千结</span>
           </div>
           <button
             onClick={toggleSidebar}
@@ -409,8 +612,8 @@ const Sidebar: React.FC<{
         </button>
       </div>
 
-      {/* 历史对话列表 */}
-      <div className="flex-1 min-h-0 focus:outline-none overflow-y-auto p-2 space-y-1">
+      {/* 历史对话列表 - 按时间分组显示 */}
+      <div className="flex-1 min-h-0 focus:outline-none overflow-y-auto p-2">
         {isLoadingChats || !hasLoadedChats ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
@@ -422,17 +625,14 @@ const Sidebar: React.FC<{
             <p className="text-xs mt-1">点击"新建对话"开始</p>
           </div>
         ) : (
-          chatSessions.map((session) => (
-            <ChatItem
-              key={session.chat_id}
-              session={session}
-              isSelected={currentChatId === session.chat_id}
-              onSelect={setCurrentChatId}
-              onDeleteClick={onDeleteChat}
-              onEditTitleClick={onEditTitleClick}
-              onExportClick={onExportClick}
-            />
-          ))
+          <GroupedChatList
+            chatSessions={chatSessions}
+            currentChatId={currentChatId}
+            onSelect={setCurrentChatId}
+            onDeleteClick={onDeleteChat}
+            onEditTitleClick={onEditTitleClick}
+            onExportClick={onExportClick}
+          />
         )}
       </div>
 
@@ -446,7 +646,7 @@ const Sidebar: React.FC<{
       />
 
       {/* 底部信息 */}
-      <div className="p-4 text-xs text-zinc-500">
+      <div className="hidden lg:block p-4 text-xs text-zinc-500">
         <p>© 2026 LiciaChat</p>
         <p className="mt-1">Powered by Qwen</p>
       </div>
@@ -544,8 +744,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       const newChat = await doCreateChat();
       // 创建成功后，获取最新的对话列表
       const chatListResponse = await getChatList();
+      // updated_at 是 UNIX 秒级时间戳，需要乘以 1000 转换为毫秒
       const sortedChats = chatListResponse.chats.sort((a, b) => 
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        b.updated_at * 1000 - a.updated_at * 1000
       );
       setChatSessions(sortedChats);
       // 如果当前没有选中的对话，则自动选中新创建的对话
@@ -568,8 +769,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const refreshChatList = useCallback(async () => {
     try {
       const chatListResponse = await getChatList();
+      // updated_at 是 UNIX 秒级时间戳，需要乘以 1000 转换为毫秒
       const sortedChats = chatListResponse.chats.sort((a, b) => 
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        b.updated_at * 1000 - a.updated_at * 1000
       );
       setChatSessions(sortedChats);
       setHasLoadedChats(true);
@@ -585,7 +787,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         // 刷新对话列表以包含新创建的对话
         const updatedChatListResponse = await getChatList();
         const updatedSortedChats = updatedChatListResponse.chats.sort((a, b) => 
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+          b.updated_at * 1000 - a.updated_at * 1000
         );
         setChatSessions(updatedSortedChats);
         // 自动选中新创建的对话

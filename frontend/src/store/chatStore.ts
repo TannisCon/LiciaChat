@@ -23,11 +23,12 @@ export interface Message {
 }
 
 // 对话会话接口
+// 注意：created_at 和 updated_at 是后端返回的 UNIX 秒级时间戳（UTC）
 export interface ChatSession {
   chat_id: string;
   title: string;
-  created_at: string;
-  updated_at: string;
+  created_at: number;  // UNIX 秒级时间戳
+  updated_at: number;  // UNIX 秒级时间戳
 }
 
 // 对话历史消息接口（后端返回格式）
@@ -240,8 +241,9 @@ export const useChatStore = create<ChatState>((set) => ({
   refreshChatList: async () => {
     try {
       const chatListResponse = await getChatList();
+      // updated_at 是 UNIX 秒级时间戳，需要乘以 1000 转换为毫秒
       const sortedChats = chatListResponse.chats.sort((a, b) => 
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        b.updated_at * 1000 - a.updated_at * 1000
       );
       set({ chatSessions: sortedChats });
     } catch (error) {

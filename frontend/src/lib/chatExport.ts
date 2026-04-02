@@ -2,18 +2,19 @@ import { getChatHistory } from '../services/chatApi';
 
 /**
  * 导出的对话数据结构
+ * 注意：created_at 和 updated_at 使用 Unix 秒级时间戳（与后端 chat 表一致）
  */
 export interface ExportedChat {
   chat_id: string;
   title: string;
-  created_at?: string;
-  updated_at?: string;
+  created_at?: number;  // Unix 秒级时间戳
+  updated_at?: number;  // Unix 秒级时间戳
   history: Array<{
     role: 'user' | 'assistant';
     content: string;
-    timestamp?: number;
+    timestamp?: number;  // Unix 毫秒级时间戳（前端生成）
   }>;
-  exported_at: string;
+  exported_at: number;  // Unix 秒级时间戳
 }
 
 /**
@@ -22,14 +23,21 @@ export interface ExportedChat {
 export async function fetchChatForExport(chatId: string): Promise<ExportedChat> {
   const response = await getChatHistory(chatId);
   
+  // 获取对话列表以获取 created_at 和 updated_at（Unix 秒级时间戳）
+  const { getChatList } = await import('../services/chatApi');
+  const chatListResponse = await getChatList();
+  const chatInfo = chatListResponse.chats.find(c => c.chat_id === chatId);
+  
   return {
     chat_id: response.chat_id,
     title: response.title,
+    created_at: chatInfo?.created_at,
+    updated_at: chatInfo?.updated_at,
     history: response.history.map(msg => ({
       role: msg.role,
       content: msg.content,
     })),
-    exported_at: new Date().toISOString(),
+    exported_at: Math.floor(Date.now() / 1000),  // Unix 秒级时间戳
   };
 }
 

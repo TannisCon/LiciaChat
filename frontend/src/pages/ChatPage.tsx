@@ -767,7 +767,7 @@ export const ChatPage: React.FC = () => {
             
             {/* 悬浮回到底部按钮 - 位于消息列表内部底部 */}
             {showScrollButton && (
-              <div className="sticky -bottom-20 flex justify-center pointer-events-none">
+              <div className="sticky -bottom-24 flex justify-center pointer-events-none">
                 <button
                   onClick={scrollToBottom}
                   className={`
@@ -791,10 +791,12 @@ export const ChatPage: React.FC = () => {
       {/* 输入区域 */}
       <div 
         ref={inputAreaRef}
-        className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-zinc-900/90 via-zinc-900/60 to-transparent pl-6 px-4 py-6 pointer-events-none"
+        className="absolute bottom-0 left-0 w-full pl-6 px-4 py-0 bg-transparent pointer-events-none"
       >
-        <div className="max-w-3xl mx-auto pointer-events-auto">
-          {/* 输入框容器 */}
+        <div className="max-w-5xl mx-auto h-full pb-6 bg-gradient-to-t from-zinc-900/90 via-zinc-900/70 to-transparent ">
+          {/* {背景半透明容器} */}
+          <div className="max-w-3xl mx-auto">
+            {/* 输入框容器 */}
           <div className="relative">
             <textarea
               ref={textareaRef}
@@ -803,9 +805,9 @@ export const ChatPage: React.FC = () => {
               onKeyDown={handleKeyDown}
               placeholder="我在听..."
               // disabled={isGenerating}
-              rows={3}
-              className="w-full bg-zinc-800/80 backdrop-blur-md text-zinc-100 break-all rounded-xl px-3 py-2 pr-14 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 border border-zinc-700 scrollbar-gutter-stable"
-              style={{ 
+              rows={1}
+              className="w-full bg-zinc-800/80 backdrop-blur-md text-zinc-100 break-all rounded-xl px-3 py-2 pr-14 resize-none leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 border border-zinc-700 scrollbar-gutter-stable pointer-events-auto"
+              style={{
                 minHeight: '80px', 
                 maxHeight: '300px',
                 scrollbarGutter: 'stable',
@@ -814,7 +816,7 @@ export const ChatPage: React.FC = () => {
             <button
               onClick={isGenerating ? handleStop : handleSend}
               disabled={!inputValue.trim() && !isGenerating}
-              className={`absolute right-3 bottom-4 p-2.5 rounded-lg transition-colors ${
+              className={`absolute right-3 bottom-4 p-2.5 rounded-lg pointer-events-auto transition-colors ${
                 isGenerating
                   ? 'bg-red-600 hover:bg-red-500 text-white'
                   : inputValue.trim()
@@ -830,26 +832,27 @@ export const ChatPage: React.FC = () => {
             </button>
           </div>
 
-          {/* 底部工具栏：深度思考开关 + 提示 */}
-          <div className="flex items-center justify-between mt-3">
-            <button
-              onClick={() => setThinkingMode(!thinkingMode)}
-              
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
-                thinkingMode
-                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-              }`}
-            >
-              <Brain className="w-4 h-4" />
-              <span className="text-sm">深度思考</span>
-            </button>
-            <span className="absolute left-1/2 -translate-x-1/2 text-center text-center text-xs text-zinc-500">
-              AI 也可能会犯错，请核查重要信息。
-            </span>
-            <span className="text-xs text-zinc-500">
-              按 Enter 发送，Shift+Enter 换行
-            </span>
+            {/* 底部工具栏：深度思考开关 + 提示 */}
+            <div className="flex items-center justify-between mt-3">
+              <button
+                onClick={() => setThinkingMode(!thinkingMode)}
+                
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg pointer-events-auto transition-colors ${
+                  thinkingMode
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                }`}
+              >
+                <Brain className="w-4 h-4" />
+                <span className="hidden md:block text-sm">深度思考</span>
+              </button>
+              <span className="hidden md:block absolute left-1/2 -translate-x-1/2 text-center text-center text-xs text-zinc-500 backdrop-blur-md px-3 py-2 rounded-lg">
+                AI 也可能会犯错，请核查重要信息。
+              </span>
+              <span className="hidden lg:block text-xs text-zinc-500 backdrop-blur-md px-3py-2 rounded-lg">
+                按 Enter 发送，Shift+Enter 换行
+              </span>
+            </div>
           </div>
         </div>
       </div>

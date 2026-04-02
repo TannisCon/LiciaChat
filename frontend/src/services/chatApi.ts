@@ -27,18 +27,19 @@ export interface UpdateChatModelResponse {
 }
 
 // 对话信息接口
+// 注意：created_at 和 updated_at 是后端返回的 UNIX 秒级时间戳（UTC）
 export interface ChatSession {
   chat_id: string;
   title: string;
-  created_at: string;
-  updated_at: string;
+  created_at: number;  // UNIX 秒级时间戳
+  updated_at: number;  // UNIX 秒级时间戳
 }
 
 // 创建对话响应
 export interface CreateChatResponse {
   chat_id: string;
   title: string;
-  created_at: string;
+  created_at: number;  // UNIX 秒级时间戳
 }
 
 // 对话列表响应
